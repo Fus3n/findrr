@@ -1,10 +1,9 @@
+use colored::*;
+use regex::Regex;
 use std::collections::HashMap;
+use std::process::exit;
 use std::{env, fs, io, io::prelude::*};
 use walkdir::{DirEntry, WalkDir};
-use colored::*;
-use std::process::exit;
-use regex::Regex;
-
 
 struct Config {
     files_to_ignore: Vec<String>,
@@ -38,7 +37,6 @@ impl Config {
     }
 }
 
-
 /// Check if file is hidden or not
 fn is_hidden(entry: &DirEntry) -> bool {
     entry
@@ -48,7 +46,7 @@ fn is_hidden(entry: &DirEntry) -> bool {
         .unwrap_or(false)
 }
 
-// Check if file 
+// Check if file
 fn check_if_ignore(file_name: &str, ignore_types: Vec<String>) -> bool {
     for ignore_type in ignore_types {
         if !ignore_type.is_empty() && file_name.ends_with(ignore_type.as_str()) {
@@ -67,41 +65,80 @@ fn check_if_include(file_name: &str, files_to_search: &Vec<String>) -> bool {
     return false;
 }
 
+/// Get string with double quotes
 fn with_quotes(s: &String) -> String {
     let q = "\"";
     format!("{}{}{}", q, s, q)
 }
 
+/// Update status
 fn msg(s: &str) {
     io::stdout().flush().unwrap();
-    print!("\r{}{}", s,"            ",);
+    print!("\r{}{}", s, "            ",);
     io::stdout().flush().unwrap();
 }
 
-fn give_half_or(s: &String, len: usize) -> String{
+/// if the given string is more then the given charcter len then
+/// return the string with the given character len and '...'
+/// otherwise return the orignal string
+fn give_half_or(s: &String, len: usize) -> String {
     let mut result = s.clone();
     if result.len() > len {
         result = result.chars().take(len).collect::<String>();
         result.push_str("...");
         return result;
-    }else{
+    } else {
         result
     }
-    
 }
 
+/// very cheap way to get file_name as i couldnt figure out a way to
+/// reuse PathBuf (still new to rust)
 fn get_file_name(s: &String) -> String {
     let res = s.replace("\\", "/");
     res.split("/").last().unwrap().to_string()
 }
 
+fn is_in_content(
+    content: &String,
+    file_name: &String,
+    file_path: &String,
+    file_data: &mut HashMap<String, Vec<String>>,
+    conf: &Config,
+) {
+    const TOTAL_LEN: usize = 90;
+    let lines = content.lines();
+    for (i, line) in lines.enumerate() {
+        msg(format!(
+            "{} {}",
+            "Finding in:".cyan(),
+            with_quotes(&file_name).green().bold()
+        )
+        .as_str());
+
+        if conf.search_term.is_match(line) {
+            let line_to_show = give_half_or(&line.to_string(), TOTAL_LEN);
+
+            file_data.insert(
+                file_path.clone(),
+                vec![(i as i32 + 1).to_string(), line_to_show],
+            );
+
+            msg(format!(
+                "{} {}",
+                "Found:".cyan(),
+                with_quotes(&file_name).green().bold()
+            )
+            .as_str());
+        }
+    }
+}
+
+/// Find files with containing pattern
 fn search_in_file(conf: &Config) -> HashMap<String, Vec<String>> {
     let mut file_data: HashMap<String, Vec<String>> = HashMap::new();
 
-    const TOTAL_LEN:usize = 90;
-
     if conf.has_directory == true {
-        
         println!(
             "{} {} {} {}, {}={}",
             "Searching in:".cyan().bold(),
@@ -125,7 +162,13 @@ fn search_in_file(conf: &Config) -> HashMap<String, Vec<String>> {
             {
                 if entry.metadata().unwrap().is_file() {
                     let file_path = entry.path().display().to_string();
-                    let name = entry.path().file_name().unwrap().to_str().unwrap().to_string();
+                    let name = entry
+                        .path()
+                        .file_name()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .to_string();
                     if conf.check_extra {
                         if !check_if_include(&file_path, &conf.files_to_search) {
                             continue;
@@ -135,41 +178,16 @@ fn search_in_file(conf: &Config) -> HashMap<String, Vec<String>> {
 
                     match content {
                         Ok(content) => {
-                            let lines = content.lines();
-                            for (i, line) in lines.enumerate() {
-                                msg(format!(
-                                    "{} {}",
-                                    "Finding in:".cyan(),
-                                    with_quotes(&name).green().bold()
-                                ).as_str());
-
-                                if conf.search_term.is_match(line) {
-                                   let line_to_show = give_half_or(&line.to_string(), TOTAL_LEN);
-                            
-                                    file_data.insert(
-                                        file_path.clone(),
-                                        vec![(i as i32 + 1).to_string(), line_to_show],
-                                    );
-
-                                    msg(format!(
-                                        "{} {}",
-                                        "Found:".cyan(),
-                                        with_quotes(&name).green().bold()
-                                    ).as_str());
-
-                                }
-                            }
+                            is_in_content(&content, &name, &file_path, &mut file_data, &conf);
                         }
                         Err(e) => {
                             if conf.debug {
                                 println!("Error reading file '{}': {}", &file_path, e);
-                                
                             }
                             continue;
                         }
                     }
                 }
-       
             }
         } else {
             let paths = fs::read_dir(&conf.directory).unwrap();
@@ -179,7 +197,6 @@ fn search_in_file(conf: &Config) -> HashMap<String, Vec<String>> {
                 match md {
                     Ok(md) => {
                         if md.is_file() {
-
                             if check_if_ignore(file_name, conf.files_to_ignore.clone()) {
                                 continue;
                             }
@@ -194,29 +211,13 @@ fn search_in_file(conf: &Config) -> HashMap<String, Vec<String>> {
 
                             match content {
                                 Ok(content) => {
-                                    let lines = content.lines();
-                                    msg(format!(
-                                        "{} {}",
-                                        "Finding in:".cyan(),
-                                        with_quotes(&give_half_or(&get_file_name(&file_name), 30)).green().bold()
-                                    ).as_str());
-    
-                                    for (i, line) in lines.enumerate() {
-                                        if conf.search_term.is_match(line) {
-
-                                            let line_to_show = give_half_or(&line.to_string(), TOTAL_LEN);
-
-                                            file_data.insert(
-                                                file_name.clone(),
-                                                vec![(i as i32 + 1).to_string(), line_to_show],
-                                            );
-                                            msg(format!(
-                                                "{} {}",
-                                                "Found:".cyan(),
-                                                with_quotes(&file_name).green().bold()
-                                            ).as_str());
-                                        }
-                                    }
+                                    is_in_content(
+                                        &content,
+                                        &get_file_name(&file_name),
+                                        &file_name,
+                                        &mut file_data,
+                                        &conf,
+                                    );
                                 }
                                 Err(e) => {
                                     if conf.debug {
@@ -243,6 +244,28 @@ fn search_in_file(conf: &Config) -> HashMap<String, Vec<String>> {
 }
 
 fn main() {
+    const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+    const HELP_TEXT: &str = r#"
+       Usage:
+              *Backslashes needs to be escaped with another backslash if in quotes for paths only.
+
+              -> Search with default settings (recursive off):
+                     <dir> <pattern>
+
+              -> Search for sepcified file extensions separated with ',':
+                     <dir> <pattern> --only txt,rs,toml
+
+              -> Ignore extention separated with ',':
+                     <dir> <pattern> --ignore "txt, cpp, py"
+
+              -> -r to enable recursive search.
+
+              -> --o to save output to a file
+                     <dir> <pattern> --ignore txt,cpp,py -o output.txt
+
+              -> -d to enable print errors if failed to open any file.
+
+              -> --v get the current version"#;
 
     let mut ignore_types: Vec<String> = vec![
         "zip".to_string(),
@@ -282,42 +305,18 @@ fn main() {
         "img".to_string(),
     ];
 
-    let mut files_to_search = Vec::<String>::new();
-
     let mut conf = Config::new();
+    let mut files_to_search = Vec::<String>::new();
+    let mut has_error = false;
 
     let args = env::args().skip(1).collect::<Vec<_>>();
 
-
-    let mut has_error = false;
-
-    let help_text: String = r#"
-       Usage:
-              *Backslashes needs to be escaped with another backslash if in quotes for paths only.
-
-              -> Search with default settings (recursive off):
-                     <dir> <pattern>
-
-              -> Search for sepcified file extensions separated with ',':
-                     <dir> <pattern> --only txt,rs,toml
-
-              -> Ignore extention separated with ',':
-                     <dir> <pattern> --ignore "txt, cpp, py"
-
-              -> -r to enable recursive search.
-
-              -> --o to save output to a file
-                     <dir> <pattern> --ignore txt,cpp,py -o output.txt
-
-              -> -d to enable print errors if failed to open any file."#
-        .to_string();
-
     if args.len() == 0 {
-        println!("{}", help_text);
+        println!("{}", HELP_TEXT);
     } else {
         for (i, cmd) in args.iter().enumerate() {
-            if cmd == "-help" {
-                println!("{}", help_text);
+            if cmd == "--help" {
+                println!("{}", HELP_TEXT);
             } else if cmd == "--o" {
                 conf.out_to_file = true;
                 let fname = &args[i + 1];
@@ -326,6 +325,9 @@ fn main() {
                 conf.recursive = true;
             } else if cmd == "-d" {
                 conf.debug = true;
+            } else if cmd == "--v" {
+                println!("{}", VERSION.trim());
+                has_error = true;
             } else if cmd == "--ignore" {
                 let ignore_t = args[i + 1].split(",");
                 for ignore_type in ignore_t {
@@ -340,12 +342,11 @@ fn main() {
                     files_to_search.push(add_type.trim().to_string());
                 }
                 conf.check_extra = true;
-            }else if cmd.starts_with("-"){
+            } else if cmd.starts_with("-") {
                 println!("{} '{}'", "Invalid argument: ".red().bold(), cmd);
-                println!("{}", help_text);
+                println!("{}", HELP_TEXT);
                 has_error = true;
-            } 
-            else {
+            } else {
                 if conf.has_directory == false {
                     conf.directory = cmd.to_string();
                     conf.has_directory = true;
@@ -357,13 +358,16 @@ fn main() {
         }
     }
 
-    if has_error { exit(1); }
-    
+    if has_error {
+        exit(1);
+    }
+
     conf.files_to_ignore = ignore_types;
     conf.files_to_search = files_to_search;
 
-    let mut formatted: String = String::new();
     let result = search_in_file(&conf);
+
+    let mut formatted: String = String::new();
 
     for (file_name, data) in result.into_iter() {
         if conf.out_to_file {
@@ -371,7 +375,7 @@ fn main() {
                 "\n{}{}
                 \rAt line: {}
                 \rContent: {}
-                \r---------------------------------------",
+                \r-------------------------------------------",
                 "File: ",
                 with_quotes(&file_name),
                 data[0],
@@ -383,7 +387,7 @@ fn main() {
                 "\n{}{}
                 \rAt line: {}
                 \rContent: {}
-                \r---------------------------------------",
+                \r-------------------------------------------",
                 "File: ".red(),
                 with_quotes(&file_name).green().bold(),
                 data[0].red(),
@@ -406,7 +410,12 @@ fn main() {
         {
             Ok(file) => file,
             Err(e) => {
-                println!("Error Saving in file '{}': {}", &conf.save_file_path, e);
+                println!(
+                    "{} '{}': {}",
+                    "Unable to in file".red(),
+                    &conf.save_file_path,
+                    e
+                );
                 return;
             }
         };
@@ -418,14 +427,13 @@ fn main() {
             Err(e) => {
                 println!(
                     "{} '{}': {}",
-                    "Error Saving in file:".red(),
+                    "Unable to in file:".red(),
                     &conf.save_file_path,
                     e
                 );
             }
         }
     } else {
-        println!("{}", &formatted);
+        println!("{}", formatted);
     }
-
 }
