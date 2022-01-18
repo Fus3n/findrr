@@ -74,7 +74,7 @@ fn with_quotes(s: &String) -> String {
 /// Update status
 fn msg(s: &str) {
     io::stdout().flush().unwrap();
-    print!("\r{}{}", s, "            ",);
+    print!("\r{}{}", s, "                   ",);
     io::stdout().flush().unwrap();
 }
 
