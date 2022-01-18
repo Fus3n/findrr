@@ -1,0 +1,17 @@
+[package]
+name = "findrr"
+version = "0.1.0"
+authors = ["Asif Hossain"]
+description = "findrr lets you find a text in directory with recursion"
+edition = "2021"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = "z"
+
+
+[dependencies]
+walkdir = "2.3.2"
+colored = "2.0.0"
+regex = "1.5.4"
