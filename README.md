@@ -10,8 +10,13 @@ A simple command-line-tool to find text pattern in multiple files with recursive
 
 
 ```
-  git clone https://github.com/Fus3n/findrr.git
-  cd findrr
-  cargo build --release
+git clone https://github.com/Fus3n/findrr.git
+cd findrr
+cargo build --release
+```
+
+### Usage
+```
+findrr <dir> <pattern>
 ```
 
